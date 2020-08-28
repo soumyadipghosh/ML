@@ -114,7 +114,7 @@ std::cout << "devices: " << devices << std::endl;
   // Look hard at this: what can I use instead of rank?
   auto data_sampler = torch::data::samplers::DistributedRandomSampler(train_dataset.size().value(),
                                              4, 0, false);
-  
+ 
   
   auto num_train_samples_per_pe = train_dataset.size().value() / 4;
   
