@@ -66,7 +66,7 @@ struct Model : torch::nn::Module {
 };
 */
 // Linear model
-
+/*
 struct Model : torch::nn::Module {
     Model()
     {
@@ -87,9 +87,9 @@ struct Model : torch::nn::Module {
     // Use one of many "standard library" modules.
     torch::nn::Linear fc1{nullptr}, fc2{nullptr};
 };
-
+*/
 // CNN-2 used in EventGraD paper
-/*
+
 struct Model : torch::nn::Module {
     Model()
         : conv1(torch::nn::Conv2dOptions(1, 10, 3)),
@@ -123,7 +123,7 @@ struct Model : torch::nn::Module {
     torch::nn::Linear fc1;
     torch::nn::Linear fc2;
 };
-*/
+
 
 int main(int argc, char *argv[])
 {
@@ -270,9 +270,10 @@ int main(int argc, char *argv[])
 
     float *left_recv_norm;
     float *right_recv_norm;
+    //float *value_diff;
     CUDACHECK(cudaMallocManaged((void**)&left_recv_norm, sz * sizeof(float)));
     CUDACHECK(cudaMallocManaged((void**)&right_recv_norm, sz * sizeof(float)));
-
+    //CUDACHECK(cudaMallocManaged((void**)&value_diff, sizeof(float)));
     // initializing values
 /*    for (int i = 0; i < sz; i++) {
         last_sent_values_norm[i] = 0.0;
@@ -372,9 +373,11 @@ int main(int argc, char *argv[])
     float *temp;
     float *left_recv;
     float *right_recv;
+    //float *iter_diff;
     CUDACHECK(cudaMallocManaged((void**)&temp, num_elem_param * param_elem_size));
     CUDACHECK(cudaMallocManaged((void**)&left_recv, num_elem_param*param_elem_size));
     CUDACHECK(cudaMallocManaged((void**)&right_recv, num_elem_param*param_elem_size));    
+    //CUDACHECK(cudaMallocManaged((void**)&iter_diff, sizeof(float)));
     for (size_t epoch = 1; epoch <= num_epochs; ++epoch) {
         int num_correct = 0;
 
@@ -416,7 +419,7 @@ int main(int argc, char *argv[])
             // parameter loop
             for (auto i = 0; i < sz; i++) {
                 // getting dimensions of tensor
-
+		//std::cout << "Beginning of loop" << std::endl;
                 int num_dim = param[i].value().dim();
                 std::vector<int64_t> dim_array;
                 for (int j = 0; j < num_dim; j++) {
@@ -424,7 +427,7 @@ int main(int argc, char *argv[])
                 }
 
                 // flattening the tensor and copying it to a 1-D vector
-                auto flat = torch::flatten(param[i].value());
+                auto flat = torch::flatten(param[i].value()).cuda().to(device);
 		//float *temp;
 		int holder = flat.numel();
                 //auto temp = (float *)calloc(flat.numel(),
@@ -436,7 +439,7 @@ int main(int argc, char *argv[])
                 }
 
                 // consider norm of current parameter
-                auto curr_norm = torch::norm(flat).item<float>();
+                auto curr_norm = torch::norm(flat).to(device).item<float>();
 		//curr_norm.to(device);
                 auto value_diff =
                     std::fabs(curr_norm - last_sent_values_norm[i]);
@@ -458,7 +461,7 @@ int main(int argc, char *argv[])
                 // event - based on norm of current parameter
                 if (value_diff >= thres[i] || pass_num < initial_comm_passes) {
                     num_events += 2;  // for both left and right neighbors
-
+		   // std::cout << "before put: " << rank << std::endl;
                     // PUSH ENTIRE MSG
                     // send to left
                     MPI_Win_lock(MPI_LOCK_SHARED, left, 0, win);
@@ -474,7 +477,7 @@ int main(int argc, char *argv[])
                             flat.numel(), MPI_FLOAT, win);
                     // MPI_Win_flush(right, win);
                     MPI_Win_unlock(right, win);
-
+		    //std::cout << "after put: " << rank << std::endl;
                     // Shifting previous slope values
                     auto slope_avg = 0.0;
                     int j = 0;
@@ -572,7 +575,7 @@ int main(int argc, char *argv[])
                         fpr << "1,  ";
                     }
                 }
-
+		//std::cout << " before average " << std::endl;
                 // writing value received
                 if (file_write == 1) {
                     fpr << right_temp << ",  ";  // << right_recv_diff << ",  ";
@@ -614,9 +617,9 @@ int main(int argc, char *argv[])
         std::cout << epoch << ", " << accuracy << std::endl;
 
     }  // end epochs
-               free(temp);
-                free(left_recv);
-                free(right_recv);
+                CUDACHECK(cudaFree(temp));
+                CUDACHECK(cudaFree(left_recv));
+                CUDACHECK(cudaFree(right_recv));
     // End timer
     tend = MPI_Wtime();
     if (rank == 0)
@@ -632,7 +635,7 @@ int main(int argc, char *argv[])
     }
 
     // Averaging learnt model - relevant only for rank 0
-    for (int i = 0; i < sz; i++) {
+   /* for (int i = 0; i < sz; i++) {
         MPI_Allreduce(MPI_IN_PLACE, param[i].value().data_ptr(),
                       param[i].value().numel(),
                       mpiDatatype.at(param[i].value().scalar_type()), MPI_SUM,
@@ -641,14 +644,14 @@ int main(int argc, char *argv[])
             param[i].value().data() = param[i].value().data() / numranks;
         }
     }
-
+*/
     // Accumulating number of events in all PEs
-    MPI_Allreduce(MPI_IN_PLACE, &num_events, 1, MPI_INT, MPI_SUM,
+/*    MPI_Allreduce(MPI_IN_PLACE, &num_events, 1, MPI_INT, MPI_SUM,
                   MPI_COMM_WORLD);
     if (rank == 0) {
         std::cout << "Total number of events - " << num_events << std::endl;
     }
-
+*/
     // Testing only in rank 0
     if (rank == 0) {
         auto test_dataset =
@@ -662,7 +665,7 @@ int main(int argc, char *argv[])
             std::move(test_dataset), num_test_samples);
 
         model->eval();  // enabling evaluation mode to prevent backpropagation
-
+	model->to(device);
         int num_correct = 0;
 
         for (auto &batch : *test_loader) {
@@ -670,10 +673,14 @@ int main(int argc, char *argv[])
             auto op = batch.target.squeeze();
 
             // convert to required format
-            ip = ip.to(torch::kF32);
-            op = op.to(torch::kLong);
+            ip = ip.to(torch::kF32).cuda();
+            op = op.to(torch::kLong).cuda();
+
+            ip.to(device);
+            op.to(device);
 
             auto prediction = model->forward(ip);
+            
 
             auto loss = torch::nll_loss(torch::log_softmax(prediction, 1), op);
 
