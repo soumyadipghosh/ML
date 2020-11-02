@@ -258,11 +258,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    auto learning_rate = 1e-2;
+    auto learning_rate = 0.05;
 
-    //torch::optim::SGD optimizer(model->parameters(), learning_rate);
     torch::optim::SGD optimizer(
-      model->parameters(), torch::optim::SGDOptions(0.05)); //.momentum(0.5));
+      model->parameters(), torch::optim::SGDOptions(learning_rate)); //.momentum(0.5));
 
     // File writing
     char send_name[30], recv_name[30], pe_str[3];
@@ -339,8 +338,8 @@ int main(int argc, char *argv[])
 
             // parameter loop
             for (auto i = 0; i < sz; i++) {
+
                 // getting dimensions of tensor
-                      
                 int num_dim = param[i].value().dim();
                 std::vector<int64_t> dim_array;
                 for (int j = 0; j < num_dim; j++) {
@@ -467,12 +466,12 @@ int main(int argc, char *argv[])
                     left_last_recv_iters[i] = pass_num;
 
                     // Record that new value is received
-                    /*
+                    
                     if (file_write == 1) {
                        fpr << "1,  ";
                     }
-                    */
-                }/*   else {
+                    
+                } else {
                     left_temp = 0;
                     
                     for (int j = 0; j < flat.numel(); j++) {
@@ -484,7 +483,7 @@ int main(int argc, char *argv[])
 
                         left_recv[j] =
                             left_last_recv_values[disp + j] +
-                            slope_avg * (epoch - left_last_recv_iters[i]);
+                            slope_avg * (pass_num - left_last_recv_iters[i]);
 
                         //compute extrapolated norm
                         left_temp += std::pow(*(left_recv + j), 2);
@@ -495,7 +494,7 @@ int main(int argc, char *argv[])
                     if (file_write == 1) {
                        fpr << "0,  ";
                     }
-                } //end left recv */
+                } //end left recv
 
                 // Writing value received
                 if (file_write == 1) {
@@ -540,12 +539,12 @@ int main(int argc, char *argv[])
                     right_last_recv_iters[i] = pass_num;
 
                     //record that new value is received
-                    /*
+                    
                     if (file_write == 1) {
                        fpr << "1,  ";
                     }
-                    */
-                }/*  else {
+                    
+                } else {
                     right_temp = 0;
 
                     for (int j = 0; j < flat.numel(); j++) {
@@ -557,7 +556,7 @@ int main(int argc, char *argv[])
 
                         right_recv[j] =
                             right_last_recv_values[disp + j] +
-                            slope_avg * (epoch - right_last_recv_iters[i]);
+                            slope_avg * (pass_num - right_last_recv_iters[i]);
 
                         // extrapolated norm
                         right_temp += std::pow(*(right_recv + j), 2);
@@ -568,7 +567,7 @@ int main(int argc, char *argv[])
                     if (file_write == 1) {
                        fpr << "0,  ";
                     }
-                } //end right recv */
+                } //end right recv
 
                 //writing value received
                 if (file_write == 1) {
@@ -579,9 +578,6 @@ int main(int argc, char *argv[])
                 torch::Tensor right_tensor =
                     torch::from_blob(right_recv, dim_array, torch::kFloat)
                         .clone();
-
-                //left_tensor.squeeze_();
-                //right_tensor.squeeze_();
 
                 // averaging with neighbors
                 param[i].value().data().add_(left_tensor.data());
@@ -619,8 +615,9 @@ int main(int argc, char *argv[])
 
     // End timer
     tend = MPI_Wtime();
-    if (rank == 0)
+    if (rank == 0) {
         std::cout << "Training time - " << (tend - tstart) << std::endl;
+    }
 
     // Print event stats
     std::cout << "No of events in rank " << rank << " - " << num_events
